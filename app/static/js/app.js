@@ -764,8 +764,14 @@ function connectWebsocket() {
 
           // Skip final aggregated content when output transcription already
           // delivered the response (prevents duplicate thinking text replay)
+          // But still show content that contains URLs or code blocks
+          // since those can't be conveyed through audio transcription
           if (!adkEvent.partial && hasOutputTranscriptionInTurn) {
-            continue;
+            const hasUrl = /https?:\/\/\S+/.test(part.text);
+            const hasCodeBlock = /```/.test(part.text);
+            if (!hasUrl && !hasCodeBlock) {
+              continue;
+            }
           }
 
           // Add a new message bubble for a new turn
