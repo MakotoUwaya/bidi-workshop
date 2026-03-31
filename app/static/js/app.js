@@ -6,6 +6,43 @@
  * WebSocket handling
  */
 
+// Voice profiles for Gemini Live API prebuilt voices
+const VOICE_PROFILES = {
+  Zephyr: "Bright",
+  Kore: "Firm",
+  Orus: "Firm",
+  Autonoe: "Bright",
+  Umbriel: "Easy-going",
+  Erinome: "Clear",
+  Laomedeia: "Upbeat",
+  Schedar: "Even",
+  Achird: "Friendly",
+  Sadachbia: "Lively",
+  Puck: "Upbeat",
+  Fenrir: "Excitable",
+  Aoede: "Breezy",
+  Enceladus: "Breathy",
+  Algieba: "Smooth",
+  Algenib: "Gravelly",
+  Achernar: "Soft",
+  Gacrux: "Mature",
+  Zubenelgenubi: "Casual",
+  Sadaltager: "Knowledgeable",
+  Charon: "Informative",
+  Leda: "Youthful",
+  Callirrhoe: "Easy-going",
+  Iapetus: "Clear",
+  Despina: "Smooth",
+  Rasalgethi: "Informative",
+  Alnilam: "Firm",
+  Pulcherrima: "Forward",
+  Vindemiatrix: "Gentle",
+  Sulafat: "Warm",
+};
+
+// Current speaker info (populated from server)
+let speakerInfo = { voiceName: null, agentName: null };
+
 // Connect the server with a WebSocket connection
 const userId = "demo-user";
 const sessionId = "demo-session-" + Math.random().toString(36).substring(7);
@@ -210,10 +247,33 @@ function updateConnectionStatus(connected) {
   }
 }
 
+// Create a speaker label element for message bubbles
+function createSpeakerLabel(isUser) {
+  const labelDiv = document.createElement("div");
+  labelDiv.className = "speaker-label";
+
+  if (isUser) {
+    labelDiv.textContent = "You";
+  } else if (speakerInfo.voiceName) {
+    const voiceName = speakerInfo.voiceName;
+    const style = VOICE_PROFILES[voiceName] || "Unknown";
+    labelDiv.textContent = `${voiceName} (${style})`;
+  } else if (speakerInfo.agentName) {
+    labelDiv.textContent = speakerInfo.agentName;
+  } else {
+    labelDiv.textContent = "Agent";
+  }
+
+  return labelDiv;
+}
+
 // Create a message bubble element
 function createMessageBubble(text, isUser, isPartial = false) {
   const messageDiv = document.createElement("div");
   messageDiv.className = `message ${isUser ? "user" : "agent"}`;
+
+  const speakerLabel = createSpeakerLabel(isUser);
+  messageDiv.appendChild(speakerLabel);
 
   const bubbleDiv = document.createElement("div");
   bubbleDiv.className = "bubble";
@@ -239,6 +299,9 @@ function createMessageBubble(text, isUser, isPartial = false) {
 function createImageBubble(imageDataUrl, isUser) {
   const messageDiv = document.createElement("div");
   messageDiv.className = `message ${isUser ? "user" : "agent"}`;
+
+  const speakerLabel = createSpeakerLabel(isUser);
+  messageDiv.appendChild(speakerLabel);
 
   const bubbleDiv = document.createElement("div");
   bubbleDiv.className = "bubble image-bubble";
@@ -343,6 +406,17 @@ function connectWebsocket() {
     // Parse the incoming ADK Event
     const adkEvent = JSON.parse(event.data);
     console.log("[AGENT TO CLIENT] ", adkEvent);
+
+    // Handle speaker info message from server
+    if (adkEvent.type === "speaker_info") {
+      speakerInfo.voiceName = adkEvent.voice_name || null;
+      speakerInfo.agentName = adkEvent.agent_name || null;
+      const voiceName = speakerInfo.voiceName;
+      const style = VOICE_PROFILES[voiceName] || "Unknown";
+      addSystemMessage(`Speaker: ${voiceName} (${style})`);
+      addConsoleEntry('incoming', `Speaker Info: ${voiceName} (${style})`, adkEvent, '🗣️', 'system');
+      return;
+    }
 
     // Log to console panel
     let eventSummary = 'Event';
