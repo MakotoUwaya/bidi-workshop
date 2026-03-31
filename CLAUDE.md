@@ -13,20 +13,16 @@ FastAPI + WebSocket バックエンドと、Vanilla JS フロントエンドで�
 # 依存関係インストール
 uv sync
 
-# サーバー起動（stepN を切り替えて段階的に動作確認）
-uv run uvicorn app.step1_main:app --reload
-uv run uvicorn app.step8_main:app --reload  # 最終版（音声+画像対応）
+# サーバー起動
+uv run uvicorn app.main:app --reload
 ```
 
 ## Architecture
 
 ### バックエンド（FastAPI + ADK）
 
+- `app/main.py` - FastAPI サーバー。WebSocket で ADK Runner と双方向ストリーミング
 - `app/my_agent/agent.py` - ADK Agent 定義（モデル: `gemini-live-2.5-flash-native-audio`、ツール: `google_search`）
-- `app/step{1,3-8}_main.py` - 段階的な実装。各ステップが独立した FastAPI アプリ
-
-**ステップ進行:**
-1. WebSocket エコー → 3. ADK 初期化 → 4. セッション管理 → 5. Upstream（テキスト送信） → 6. Downstream（イベント受信） → 7. 音声対応 → 8. 画像対応
 
 **WebSocket エンドポイント:** `/ws/{user_id}/{session_id}`
 - Upstream: クライアント→エージェント（テキスト JSON / バイナリ PCM 音声 / base64 画像）

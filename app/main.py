@@ -1,6 +1,7 @@
-"""Step 7: Bidirectional audio - voice input and output."""
+"""ADK Gemini Live API bidirectional streaming server."""
 
 import asyncio
+import base64
 import json
 import warnings
 from pathlib import Path
@@ -47,12 +48,29 @@ async def websocket_endpoint(
     await websocket.accept()
     print("Connection open")
 
+    voice_name = "Zephyr"
+    speech_config = types.SpeechConfig(
+        voice_config=types.VoiceConfig(
+            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                voice_name=voice_name,
+            )
+        )
+    )
+
     run_config = RunConfig(
+        speech_config=speech_config,
         streaming_mode=StreamingMode.BIDI,
         response_modalities=["AUDIO"],
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
     )
+
+    # Send speaker info to client
+    await websocket.send_json({
+        "type": "speaker_info",
+        "voice_name": voice_name,
+        "agent_name": agent.name,
+    })
 
     session = await session_service.get_session(
         app_name=APP_NAME, user_id=user_id, session_id=session_id
@@ -73,27 +91,42 @@ async def websocket_endpoint(
             if "text" in message:
                 json_message = json.loads(message["text"])
 
+                # Handle text messages
                 if json_message.get("type") == "text":
                     user_text = json_message["text"]
-                    print(f"[UPSTREAM] User text: {user_text}")
+                    print(f"[UPSTREAM] Text: {user_text}")
 
                     content = types.Content(
                         parts=[types.Part(text=user_text)]
                     )
                     live_request_queue.send_content(content)
 
+                # Handle image messages
+                elif json_message.get("type") == "image":
+                    print("[UPSTREAM] Image received")
+
+                    # Decode base64 image data
+                    image_data = base64.b64decode(json_message["data"])
+                    mime_type = json_message.get("mimeType", "image/jpeg")
+
+                    print(f"[UPSTREAM] Image: {len(image_data)} bytes, {mime_type}")
+
+                    # Create image blob and send
+                    image_blob = types.Blob(
+                        mime_type=mime_type,
+                        data=image_data
+                    )
+                    live_request_queue.send_realtime(image_blob)
+
             # Handle binary messages (audio)
             elif "bytes" in message:
                 audio_data = message["bytes"]
                 print(f"[UPSTREAM] Audio chunk: {len(audio_data)} bytes")
 
-                # Create audio blob with correct format
                 audio_blob = types.Blob(
-                    mime_type="audio/pcm;rate=16000",  # 16kHz mono PCM
+                    mime_type="audio/pcm;rate=16000",
                     data=audio_data
                 )
-
-                # Stream audio (doesn't trigger response until VAD detects silence)
                 live_request_queue.send_realtime(audio_blob)
 
     async def downstream_task() -> None:

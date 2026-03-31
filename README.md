@@ -62,7 +62,7 @@ uv sync
 ## 起動
 
 ```bash
-uv run uvicorn app.step1_main:app --reload
+uv run uvicorn app.main:app --reload
 ```
 
 ブラウザで http://localhost:8000 にアクセスしてください。
@@ -74,9 +74,7 @@ bidi-workshop/
 ├── pyproject.toml          # プロジェクト定義・依存関係
 └── app/
     ├── .env.template       # 環境変数テンプレート
-    ├── step1_main.py       # ステップ 1: 基本サーバー
-    ├── step3_main.py       # ステップ 3〜8: 各段階の実装
-    ├── ...
+    ├── main.py             # FastAPI サーバー (WebSocket + ADK)
     ├── my_agent/
     │   ├── __init__.py
     │   └── agent.py        # エージェント定義
