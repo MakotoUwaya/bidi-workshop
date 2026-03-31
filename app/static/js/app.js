@@ -49,15 +49,17 @@ const sessionId = "demo-session-" + Math.random().toString(36).substring(7);
 let websocket = null;
 let is_audio = false;
 
-// Get checkbox elements for RunConfig options
+// Get UI elements for RunConfig options
 const enableProactivityCheckbox = document.getElementById("enableProactivity");
 const enableAffectiveDialogCheckbox = document.getElementById("enableAffectiveDialog");
+const voiceSelect = document.getElementById("voiceSelect");
 
 // Reconnect WebSocket when RunConfig options change
 function handleRunConfigChange() {
   if (websocket && websocket.readyState === WebSocket.OPEN) {
     addSystemMessage("Reconnecting with updated settings...");
     addConsoleEntry('outgoing', 'Reconnecting due to settings change', {
+      voice: voiceSelect.value || "default",
       proactivity: enableProactivityCheckbox.checked,
       affective_dialog: enableAffectiveDialogCheckbox.checked
     }, '🔄', 'system');
@@ -66,9 +68,10 @@ function handleRunConfigChange() {
   }
 }
 
-// Add change listeners to RunConfig checkboxes
+// Add change listeners to RunConfig controls
 enableProactivityCheckbox.addEventListener("change", handleRunConfigChange);
 enableAffectiveDialogCheckbox.addEventListener("change", handleRunConfigChange);
+voiceSelect.addEventListener("change", handleRunConfigChange);
 
 // Build WebSocket URL with RunConfig options as query parameters
 function getWebSocketUrl() {
@@ -76,6 +79,11 @@ function getWebSocketUrl() {
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const baseUrl = wsProtocol + "//" + window.location.host + "/ws/" + userId + "/" + sessionId;
   const params = new URLSearchParams();
+
+  // Add voice option if selected
+  if (voiceSelect && voiceSelect.value) {
+    params.append("voice", voiceSelect.value);
+  }
 
   // Add proactivity option if checked
   if (enableProactivityCheckbox && enableProactivityCheckbox.checked) {
@@ -256,12 +264,10 @@ function createSpeakerLabel(isUser) {
     labelDiv.textContent = "You";
   } else if (speakerInfo.voiceName) {
     const voiceName = speakerInfo.voiceName;
-    const style = VOICE_PROFILES[voiceName] || "Unknown";
-    labelDiv.textContent = `${voiceName} (${style})`;
-  } else if (speakerInfo.agentName) {
-    labelDiv.textContent = speakerInfo.agentName;
+    const style = VOICE_PROFILES[voiceName] || "";
+    labelDiv.textContent = style ? `${voiceName} (${style})` : voiceName;
   } else {
-    labelDiv.textContent = "Agent";
+    labelDiv.textContent = speakerInfo.agentName || "Agent";
   }
 
   return labelDiv;
@@ -412,9 +418,14 @@ function connectWebsocket() {
       speakerInfo.voiceName = adkEvent.voice_name || null;
       speakerInfo.agentName = adkEvent.agent_name || null;
       const voiceName = speakerInfo.voiceName;
-      const style = VOICE_PROFILES[voiceName] || "Unknown";
-      addSystemMessage(`Speaker: ${voiceName} (${style})`);
-      addConsoleEntry('incoming', `Speaker Info: ${voiceName} (${style})`, adkEvent, '🗣️', 'system');
+      if (voiceName) {
+        const style = VOICE_PROFILES[voiceName] || "Unknown";
+        addSystemMessage(`Speaker: ${voiceName} (${style})`);
+        addConsoleEntry('incoming', `Speaker Info: ${voiceName} (${style})`, adkEvent, '🗣️', 'system');
+      } else {
+        addSystemMessage("Speaker: Default (API selected)");
+        addConsoleEntry('incoming', 'Speaker Info: Default', adkEvent, '🗣️', 'system');
+      }
       return;
     }
 

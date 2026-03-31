@@ -7,7 +7,7 @@ import warnings
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from google.adk.agents.live_request_queue import LiveRequestQueue
@@ -44,18 +44,22 @@ async def websocket_endpoint(
     websocket: WebSocket,
     user_id: str,
     session_id: str,
+    voice: str = Query(default=""),
 ) -> None:
     await websocket.accept()
     print("Connection open")
 
-    voice_name = "Zephyr"
-    speech_config = types.SpeechConfig(
-        voice_config=types.VoiceConfig(
-            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                voice_name=voice_name,
+    # Build speech config from query parameter
+    speech_config = None
+    voice_name = voice or None
+    if voice_name:
+        speech_config = types.SpeechConfig(
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                    voice_name=voice_name,
+                )
             )
         )
-    )
 
     run_config = RunConfig(
         speech_config=speech_config,
