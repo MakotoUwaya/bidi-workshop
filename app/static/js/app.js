@@ -45,9 +45,13 @@ let speakerInfo = { voiceName: null, agentName: null };
 
 // Connect the server with a WebSocket connection
 const userId = "demo-user";
-const sessionId = "demo-session-" + Math.random().toString(36).substring(7);
+function generateSessionId() {
+  return crypto.randomUUID();
+}
+let sessionId = generateSessionId();
 let websocket = null;
 let is_audio = false;
+let serverReady = false; // True after receiving speaker_info from server
 
 // Get UI elements for RunConfig options
 const enableProactivityCheckbox = document.getElementById("enableProactivity");
@@ -114,6 +118,7 @@ let currentInputTranscriptionId = null;
 let currentInputTranscriptionElement = null;
 let currentOutputTranscriptionId = null;
 let currentOutputTranscriptionElement = null;
+let lastAgentBubbleElement = null; // Keeps reference for grounding metadata
 let inputTranscriptionFinished = false; // Track if input transcription is complete for this turn
 let hasOutputTranscriptionInTurn = false; // Track if output transcription delivered the response
 
@@ -411,10 +416,28 @@ function connectWebsocket() {
   websocket.onmessage = function (event) {
     // Parse the incoming ADK Event
     const adkEvent = JSON.parse(event.data);
-    console.log("[AGENT TO CLIENT] ", adkEvent);
+    // Audio events are high-volume; use debug to avoid flooding DevTools
+    const hasAudio = adkEvent.content?.parts?.some(p => p.inlineData);
+    if (hasAudio) {
+      console.debug("[AGENT TO CLIENT] Audio event");
+    } else {
+      console.log("[AGENT TO CLIENT] ", adkEvent);
+    }
+
+    // Handle session expiry from server (Gemini session timeout)
+    if (adkEvent.type === "session_expired") {
+      serverReady = false;
+      // Generate new session ID to avoid stale session history
+      sessionId = generateSessionId();
+      addSystemMessage("Session expired. Starting new session...");
+      addConsoleEntry('incoming', 'Session expired by Gemini API, new session: ' + sessionId, adkEvent, '⏰', 'system');
+      websocket.close();
+      return;
+    }
 
     // Handle speaker info message from server
     if (adkEvent.type === "speaker_info") {
+      serverReady = true;
       speakerInfo.voiceName = adkEvent.voice_name || null;
       speakerInfo.agentName = adkEvent.agent_name || null;
       const voiceName = speakerInfo.voiceName;
@@ -543,6 +566,35 @@ function connectWebsocket() {
     if (!isAudioOnlyEvent) {
       const sanitizedEvent = sanitizeEventForDisplay(adkEvent);
       addConsoleEntry('incoming', eventSummary, sanitizedEvent, eventEmoji, author);
+    }
+
+    // Handle grounding metadata (Google Search results)
+    // Append to the current agent bubble rather than creating a separate one
+    if (adkEvent.groundingMetadata) {
+      const gm = adkEvent.groundingMetadata;
+      const renderedContent = gm.searchEntryPoint?.renderedContent;
+      if (renderedContent && lastAgentBubbleElement) {
+        const targetBubble = lastAgentBubbleElement;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(renderedContent, "text/html");
+        const chips = doc.querySelectorAll("a.chip");
+        if (chips.length > 0) {
+          const bubble = targetBubble.querySelector(".bubble");
+          const chipContainer = document.createElement("div");
+          chipContainer.className = "grounding-chips";
+          chips.forEach(chip => {
+            const link = document.createElement("a");
+            link.href = chip.href;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.className = "grounding-chip";
+            link.textContent = chip.textContent;
+            chipContainer.appendChild(link);
+          });
+          bubble.appendChild(chipContainer);
+          scrollToBottom();
+        }
+      }
     }
 
     // Handle turn complete event
@@ -697,6 +749,7 @@ function connectWebsocket() {
           currentOutputTranscriptionId = Math.random().toString(36).substring(7);
           currentOutputTranscriptionElement = createMessageBubble(transcriptionText, false, !isFinished);
           currentOutputTranscriptionElement.id = currentOutputTranscriptionId;
+          lastAgentBubbleElement = currentOutputTranscriptionElement;
 
           // Add a special class to indicate it's a transcription
           currentOutputTranscriptionElement.classList.add("transcription");
@@ -779,6 +832,7 @@ function connectWebsocket() {
             currentMessageId = Math.random().toString(36).substring(7);
             currentBubbleElement = createMessageBubble(part.text, false, true);
             currentBubbleElement.id = currentMessageId;
+            lastAgentBubbleElement = currentBubbleElement;
             messagesDiv.appendChild(currentBubbleElement);
           } else {
             // Update the existing message bubble with accumulated text
@@ -793,11 +847,13 @@ function connectWebsocket() {
         }
       }
     }
+
   };
 
   // Handle connection close
   websocket.onclose = function () {
     console.log("WebSocket connection closed.");
+    serverReady = false;
     updateConnectionStatus(false);
     document.getElementById("sendButton").disabled = true;
     addSystemMessage("Connection closed. Reconnecting in 5 seconds...");
@@ -1083,10 +1139,10 @@ startAudioButton.addEventListener("click", () => {
 
 // Audio recorder handler
 function audioRecorderHandler(pcmData) {
-  if (websocket && websocket.readyState === WebSocket.OPEN && is_audio) {
+  if (websocket && websocket.readyState === WebSocket.OPEN && is_audio && serverReady) {
     // Send audio as binary WebSocket frame (more efficient than base64 JSON)
     websocket.send(pcmData);
-    console.log("[CLIENT TO AGENT] Sent audio chunk: %s bytes", pcmData.byteLength);
+    console.debug("[CLIENT TO AGENT] Sent audio chunk: %s bytes", pcmData.byteLength);
 
     // Log to console panel (optional, can be noisy with frequent audio chunks)
     // addConsoleEntry('outgoing', `Audio chunk: ${pcmData.byteLength} bytes`);
