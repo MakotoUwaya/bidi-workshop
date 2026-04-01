@@ -24,6 +24,7 @@ from my_agent.agent import agent  # noqa: E402
 
 APP_NAME = "bidi-workshop"
 _direct_mode = os.environ.get("DIRECT_MODE", "FALSE").upper() in ("TRUE", "1")
+_use_vertexai = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "TRUE").upper() in ("TRUE", "1")
 
 # Logging setup: set LOG_LEVEL=DEBUG to see audio chunk logs
 log_level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO)
@@ -94,6 +95,11 @@ async def _handle_adk_session(
         response_modalities=["AUDIO"],
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
+        # Vertex AI では透過的セッション再開を有効化（履歴テキスト再送を回避）
+        session_resumption=(
+            types.SessionResumptionConfig(transparent=True)
+            if _use_vertexai else None
+        ),
     )
 
     session = await session_service.get_session(
@@ -200,6 +206,7 @@ async def _handle_direct_session(
         realtime_input_config=types.RealtimeInputConfig(
             turn_coverage="TURN_INCLUDES_ONLY_ACTIVITY",
         ),
+        tools=[types.Tool(google_search=types.GoogleSearch())],
     )
 
     logger.info("Connecting to Gemini Live (direct): model=%s", agent.model)
