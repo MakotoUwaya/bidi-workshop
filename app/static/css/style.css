@@ -89,6 +89,12 @@ h1 {
   color: white;
 }
 
+.header-select select optgroup {
+  background-color: #3a3a5c;
+  color: #ccc;
+  font-weight: 600;
+}
+
 .header-checkbox {
   display: flex;
   align-items: center;
